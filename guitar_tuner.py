@@ -6,23 +6,32 @@ import matplotlib.pyplot as plt
 import sys,os
 import curses
 
-# get a list of all speakers:
-speakers = sc.all_speakers()
-# get the current default speaker on your system:
-default_speaker = sc.default_speaker()
-# get a list of all microphones:
-mics = sc.all_microphones()
-# get the current default microphone on your system:
-default_mic = sc.default_microphone()
 
-    
+FRAME_RATE = 44100    
 
 
 class PitchDetector:
 
-    def __init__(self,):
+    def __init__(self, stdscr):
+        # get a list of all speakers:
+        speakers = sc.all_speakers()
+        # get the current default speaker on your system:
+        self.default_speaker = sc.default_speaker()
+        # get a list of all microphones:
+        mics = sc.all_microphones()
+        # get the current default microphone on your system:
+        self.default_mic = self.__get_build_in_mic(mics)
+        self.stdscr = stdscr
 
-        curses.wrapper(self.__load_canvas)
+        self.__load_canvas(stdscr)
+
+
+    def __get_build_in_mic(self, mics):
+        for m in mics:
+            if m.name == 'Built-in Microphone':
+                return m
+        else:
+            raise BuiltInMicrophoneNotFoundError
 
     def __load_canvas(self, stdscr):
         # Clear and refresh the screen for a blank canvas
@@ -81,11 +90,24 @@ class PitchDetector:
 
         k = stdscr.getch()
 
-        
 
+class GuitarTuner(PitchDetector):
 
-def main():
-    pd = PitchDetector()
+    def __init__(self, stdscr):
+        super(GuitarTuner, self).__init__(stdscr)
+
+    def listen(self):
+        with self.default_mic.recorder(samplerate=FRAME_RATE) as mic:
+            while True:
+                ys = mic.record(numframes=1024)
+                sp.play(data)
+                
+
+    
+class BuiltInMicrophoneNotFoundError(Exception):
+    pass
+
 
 if __name__ == "__main__":
-    main()
+    # curses.wrapper(PitchDetector)
+    curses.wrapper(GuitarTuner)
