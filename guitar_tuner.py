@@ -119,21 +119,36 @@ def freq2key(frequency_float, freq2key_map, frequency_array):
             ]
         ]
 
+'''
+You want to ignore ambient sound. However, you shouldn't ignore high pitches
+which tend to have low energy. 
+
+1E-06 ignores E4 guitar string
+'''
+AMBIENCE_THRESHOLD = 1E-06
 class PianoPitchDetector(PitchDetector):
 
     def __init__(self, stdscr):
         super(PianoPitchDetector, self).__init__(stdscr)
-        self.update_canvas()
         self.frequencies = np.array(list(KEY_FREQUENCY_MAP_PIANO.values()))
+        self.__is_high_pitch = False
+        self.update_canvas()
         self.listen()
 
     def listen(self):
         with self.default_mic.recorder(samplerate=FRAMERATE, channels=1) as mic:
             while True:
                 ys = mic.record(numframes=FRAMERATE//5)
+                if not self.__is_high_pitch and np.abs(ys.mean()) < AMBIENCE_THRESHOLD:
+                    # self.update_canvas(f'Too quiet. mean:{ys.mean()}, max: {ys.max()}')
+                    self.update_canvas()
+                    continue
                 spectrum = make_spectrum(ys)
                 frequency_fundamental = spectrum.fs[spectrum.amps.argmax()]
                 key = freq2key(frequency_fundamental, FREQUENCY_KEY_MAP_PIANO, self.frequencies)
+                
+                self.__is_high_pitch = True if int(key[-1]) > 4 else False
+                    
                 sentence = f'{key}: {frequency_fundamental:.2f}HZ'
                 self.update_canvas(sentence)
 
