@@ -2,12 +2,13 @@ import soundcard as sc
 import numpy as np
 import matplotlib.pyplot as plt
 
-
 import sys,os
 import curses
 
+import thinkdsp
+from constants import KEY_FREQUENCY_MAP_PIANO, FREQUENCY_KEY_MAP_PIANO
 
-FRAME_RATE = 44100    
+FRAMERATE = 44100    
 
 
 class PitchDetector:
@@ -35,8 +36,8 @@ class PitchDetector:
 
     def __load_canvas(self, stdscr):
         # Clear and refresh the screen for a blank canvas
-        stdscr.clear()
-        stdscr.refresh()
+        self.stdscr.clear()
+        self.stdscr.refresh()
 
         # Start colors in curses
         curses.start_color()
@@ -44,13 +45,13 @@ class PitchDetector:
         curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)
         curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_WHITE)
 
-        self.__update_canvas(stdscr)
+        # self.__update_canvas()
 
 
-    def __update_canvas(self, stdscr):
+    def update_canvas(self, sentence='-----'):
         # Initialization
-        stdscr.clear()
-        height, width = stdscr.getmaxyx()
+        self.stdscr.clear()
+        height, width = self.stdscr.getmaxyx()
 
         # Declaration of strings
         title = "Guitar Tuner"[:width-1]
@@ -63,44 +64,78 @@ class PitchDetector:
 
         # Rendering some text
         whstr = "Width: {}, Height: {}".format(width, height)
-        stdscr.addstr(0, 0, whstr, curses.color_pair(1))
+        self.stdscr.addstr(0, 0, whstr, curses.color_pair(1))
 
         # Render status bar
-        stdscr.attron(curses.color_pair(3))
-        stdscr.attroff(curses.color_pair(3))
+        self.stdscr.attron(curses.color_pair(3))
+        self.stdscr.attroff(curses.color_pair(3))
 
         # Turning on attributes for title
-        stdscr.attron(curses.color_pair(2))
-        stdscr.attron(curses.A_BOLD)
+        self.stdscr.attron(curses.color_pair(2))
+        self.stdscr.attron(curses.A_BOLD)
 
         # Rendering title
-        stdscr.addstr(start_y, start_x_title, title)
+        self.stdscr.addstr(start_y, start_x_title, title)
 
         # Turning off attributes for title
-        stdscr.attroff(curses.color_pair(2))
-        stdscr.attroff(curses.A_BOLD)
+        self.stdscr.attroff(curses.color_pair(2))
+        self.stdscr.attroff(curses.A_BOLD)
 
         # Print rest of text
-        stdscr.addstr(start_y + 1, start_x_subtitle, subtitle)
-        stdscr.addstr(start_y + 3, (width // 2) - 2, '-' * 4)
+        self.stdscr.addstr(start_y + 1, start_x_subtitle, subtitle)
+        self.stdscr.addstr(start_y + 3, (width // 2) - 2, sentence)
 
-        stdscr.addstr(height - 1, width -1, '')
+        self.stdscr.addstr(height - 1, width -1, '')
         # Refresh the screen
-        stdscr.refresh()
+        self.stdscr.refresh()
 
-        k = stdscr.getch()
+        # k = self.stdscr.getch()
 
 
-class GuitarTuner(PitchDetector):
+def make_spectrum(ys, full=False, framerate=FRAMERATE):
+        """Computes the spectrum using FFT.
+
+        returns: Spectrum
+        """
+        n = len(ys)
+        d = 1 / framerate
+
+        if full:
+            hs = np.fft.fft(ys)
+            fs = np.fft.fftfreq(n, d)
+        else:
+            hs = np.fft.rfft(ys)
+            fs = np.fft.rfftfreq(n, d)
+
+        return thinkdsp.Spectrum(hs, fs, framerate, full)
+
+def freq2key(frequency_float, freq2key_map, frequency_array):
+    return freq2key_map[
+        frequency_array[
+            np.argmin(
+                np.abs(frequency_array - frequency_float)
+                )
+            ]
+        ]
+
+class PianoPitchDetector(PitchDetector):
 
     def __init__(self, stdscr):
-        super(GuitarTuner, self).__init__(stdscr)
+        super(PianoPitchDetector, self).__init__(stdscr)
+        self.update_canvas()
+        self.frequencies = np.array(list(KEY_FREQUENCY_MAP_PIANO.values()))
+        self.listen()
 
     def listen(self):
-        with self.default_mic.recorder(samplerate=FRAME_RATE) as mic:
+        with self.default_mic.recorder(samplerate=FRAMERATE, channels=1) as mic:
             while True:
-                ys = mic.record(numframes=1024)
-                sp.play(data)
+                ys = mic.record(numframes=FRAMERATE//10)
+                spectrum = make_spectrum(ys)
+                frequency_dominant = spectrum.fs[spectrum.amps.argmax()]
+                key = freq2key(frequency_dominant, FREQUENCY_KEY_MAP_PIANO, self.frequencies)
+                sentence = f'{key}:\t {frequency_dominant:.2f}HZ'
+                self.update_canvas(sentence)
+
                 
 
     
@@ -110,4 +145,4 @@ class BuiltInMicrophoneNotFoundError(Exception):
 
 if __name__ == "__main__":
     # curses.wrapper(PitchDetector)
-    curses.wrapper(GuitarTuner)
+    curses.wrapper(PianoPitchDetector)
