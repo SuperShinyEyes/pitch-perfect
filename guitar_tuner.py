@@ -48,18 +48,19 @@ class PitchDetector:
         # self.__update_canvas()
 
 
-    def update_canvas(self, sentence='-----'):
+    def update_canvas(self, pitch='-----'):
         # Initialization
         self.stdscr.clear()
         height, width = self.stdscr.getmaxyx()
 
         # Declaration of strings
-        title = "Guitar Tuner"[:width-1]
-        subtitle = "Written by Seyoung Park"[:width-1]
+        title = "Pitch Perfect"[:width-1]
+        subtitle = "Written by Seyoung & Jonathan"[:width-1]
 
         # Centering calculations
         start_x_title = int((width // 2) - (len(title) // 2) - len(title) % 2)
         start_x_subtitle = int((width // 2) - (len(subtitle) // 2) - len(subtitle) % 2)
+        start_x_pitch = int((width // 2) - (len(pitch) // 2) - len(pitch) % 2)
         start_y = int((height // 2) - 2)
 
         # Rendering some text
@@ -83,7 +84,7 @@ class PitchDetector:
 
         # Print rest of text
         self.stdscr.addstr(start_y + 1, start_x_subtitle, subtitle)
-        self.stdscr.addstr(start_y + 3, (width // 2) - 2, sentence)
+        self.stdscr.addstr(start_y + 3, start_x_pitch, pitch)
 
         self.stdscr.addstr(height - 1, width -1, '')
         # Refresh the screen
@@ -93,21 +94,21 @@ class PitchDetector:
 
 
 def make_spectrum(ys, full=False, framerate=FRAMERATE):
-        """Computes the spectrum using FFT.
+    """Computes the spectrum using FFT.
 
-        returns: Spectrum
-        """
-        n = len(ys)
-        d = 1 / framerate
+    returns: Spectrum
+    """
+    n = len(ys)
+    d = 1 / framerate
 
-        if full:
-            hs = np.fft.fft(ys)
-            fs = np.fft.fftfreq(n, d)
-        else:
-            hs = np.fft.rfft(ys)
-            fs = np.fft.rfftfreq(n, d)
+    if full:
+        hs = np.fft.fft(ys)
+        fs = np.fft.fftfreq(n, d)
+    else:
+        hs = np.fft.rfft(ys)
+        fs = np.fft.rfftfreq(n, d)
 
-        return thinkdsp.Spectrum(hs, fs, framerate, full)
+    return thinkdsp.Spectrum(hs, fs, framerate, full)
 
 def freq2key(frequency_float, freq2key_map, frequency_array):
     return freq2key_map[
@@ -129,11 +130,11 @@ class PianoPitchDetector(PitchDetector):
     def listen(self):
         with self.default_mic.recorder(samplerate=FRAMERATE, channels=1) as mic:
             while True:
-                ys = mic.record(numframes=FRAMERATE//10)
+                ys = mic.record(numframes=FRAMERATE//5)
                 spectrum = make_spectrum(ys)
-                frequency_dominant = spectrum.fs[spectrum.amps.argmax()]
-                key = freq2key(frequency_dominant, FREQUENCY_KEY_MAP_PIANO, self.frequencies)
-                sentence = f'{key}:\t {frequency_dominant:.2f}HZ'
+                frequency_fundamental = spectrum.fs[spectrum.amps.argmax()]
+                key = freq2key(frequency_fundamental, FREQUENCY_KEY_MAP_PIANO, self.frequencies)
+                sentence = f'{key}: {frequency_fundamental:.2f}HZ'
                 self.update_canvas(sentence)
 
                 
