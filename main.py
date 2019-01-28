@@ -6,7 +6,7 @@ import sys,os
 import curses
 
 import thinkdsp
-from constants import KEY_FREQUENCY_MAP_PIANO, FREQUENCY_KEY_MAP_PIANO
+from constants import FREQUENCY_KEY_MAP
 
 FRAMERATE = 44100    
 
@@ -130,7 +130,7 @@ class PianoPitchDetector(PitchDetector):
 
     def __init__(self, stdscr):
         super(PianoPitchDetector, self).__init__(stdscr)
-        self.frequencies = np.array(list(KEY_FREQUENCY_MAP_PIANO.values()))
+        self.key_frequencies = np.array(list(FREQUENCY_KEY_MAP.keys()))
         self.__is_high_pitch = False
         self.update_canvas()
         self.listen()
@@ -138,14 +138,14 @@ class PianoPitchDetector(PitchDetector):
     def listen(self):
         with self.default_mic.recorder(samplerate=FRAMERATE, channels=1) as mic:
             while True:
-                ys = mic.record(numframes=FRAMERATE//5)
+                ys = mic.record(numframes=FRAMERATE//4)
                 if not self.__is_high_pitch and np.abs(ys.mean()) < AMBIENCE_THRESHOLD:
                     # self.update_canvas(f'Too quiet. mean:{ys.mean()}, max: {ys.max()}')
                     self.update_canvas()
                     continue
                 spectrum = make_spectrum(ys)
                 frequency_fundamental = spectrum.fs[spectrum.amps.argmax()]
-                key = freq2key(frequency_fundamental, FREQUENCY_KEY_MAP_PIANO, self.frequencies)
+                key = freq2key(frequency_fundamental, FREQUENCY_KEY_MAP, self.key_frequencies)
                 
                 self.__is_high_pitch = True if int(key[-1]) > 4 else False
                     
