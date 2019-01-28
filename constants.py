@@ -1,3 +1,5 @@
+import numpy as np
+
 KEY_FREQUENCY_MAP = {
  'a#0': 58.27,
  'a#1': 116.541,
@@ -109,3 +111,5 @@ KEY_FREQUENCY_MAP = {
  'g8': 12543.855}
 
 FREQUENCY_KEY_MAP = { v:k for k, v in KEY_FREQUENCY_MAP.items()}
+
+FREQUENCY_ARRAY = np.array(list(FREQUENCY_KEY_MAP.keys()))
