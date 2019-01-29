@@ -134,7 +134,7 @@ which tend to have low energy.
 
 1E-06 ignores E4 guitar string
 '''
-AMBIENCE_THRESHOLD = 1E-08
+AMBIENCE_THRESHOLD = 1E-07
 class PianoPitchDetector(PitchDetector):
 
     def __init__(self, stdscr):
