@@ -15,6 +15,8 @@ python -c 'import pitch_perfect; print("Pitch_perfect installation ok.")'
 
 ## Run
 ```
+conda activate pitch-perfect
+# Run the following command in any path
 perfect
 ```
 
