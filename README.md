@@ -2,12 +2,9 @@
 
 ## Installation
 ```
-git clone git@github.com:SuperShinyEyes/pitch-perfect.git
-cd pitch-perfect
 make init
-```
 
-```
+# Validate your installation
 python -c 'import pitch_perfect; print("Pitch_perfect installation ok.")'
 ```
 
