@@ -1,5 +1,7 @@
 ENV = pitch_perfect
 
+.PHONY: init clean
+
 init:
 	conda env create -f environment.yml
 	. activate $(ENV) && pip install -e .
