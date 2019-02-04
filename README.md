@@ -1,5 +1,23 @@
 # Pitch Detector
 
+## Installation
+```
+git clone git@github.com:SuperShinyEyes/pitch-perfect.git
+cd pitch-perfect
+conda env create -f environment.yml
+conda activate pitch-perfect  # or "source activate pitch-perfect" depending on your conda setup
+pip install -e .
+```
+
+```
+python -c 'import pitch_perfect; print("Pitch_perfect installation ok.")'
+```
+
+## Run
+```
+perfect
+```
+
 ## Octave issue
 - e3: e5
 - f3: f5
