@@ -16,7 +16,7 @@ import pandas
 import warnings
 
 # customize some matplotlib attributes
-#matplotlib.rc('figure', figsize=(4, 3))
+# matplotlib.rc('figure', figsize=(15, 10))
 
 #matplotlib.rc('font', size=14.0)
 #matplotlib.rc('axes', labelsize=22.0, titlesize=22.0)
@@ -226,7 +226,6 @@ def Plot(obj, ys=None, style='', **options):
     options = _UnderrideColor(options)
     label = getattr(obj, 'label', '_nolegend_')
     options = _Underride(options, linewidth=3, alpha=0.7, label=label)
-
     xs = obj
     if ys is None:
         if hasattr(obj, 'Render'):
@@ -235,6 +234,7 @@ def Plot(obj, ys=None, style='', **options):
             ys = obj.values
             xs = obj.index
 
+    plt.figure(figsize=(7,3))
     if ys is None:
         plt.plot(xs, style, **options)
     else:

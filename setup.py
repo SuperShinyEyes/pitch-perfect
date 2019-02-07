@@ -11,7 +11,7 @@ setuptools.setup(
     description="Pitch detector",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    scripts=['bin/perfect'],
+    scripts=['bin/perfect', 'bin/perfect-transfer'],
     url="https://github.com/SuperShinyEyes/pitch-perfect",
     packages=setuptools.find_packages(),
     classifiers=[

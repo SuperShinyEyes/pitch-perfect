@@ -98,6 +98,9 @@ def read_wave(filename='sound.wav'):
 
     returns: Wave
     """
+    if type(filename) is not str:
+        filename = str(filename)
+
     fp = open_wave(filename, 'r')
 
     nchannels = fp.getnchannels()
