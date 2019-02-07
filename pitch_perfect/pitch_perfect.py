@@ -95,9 +95,15 @@ def autocorrelate(ys):
     N = len(ys)
     lengths = range(N, N//2, -1)
     
-    corrs = np.correlate(ys, ys, mode='same')
+    corrs = np.correlate(
+        ys, 
+        ys, 
+        mode='same'  # Range of lag. 'same' is in the range from -N/2 to N/2,
+                     # where N is the length of the given segment
+        )
     
-    # Take only the positive half
+    # The 'same' mode return a symmetric autocorrelation values which is in 
+    # the range from -N/2 to N/2. Take only the positive half.
     corrs = corrs[N//2:]
     
     # Offset diminish over time
@@ -127,6 +133,23 @@ def freq2key(freq):
                 )
             ]
         ]
+
+def make_spectrum(ys, full=False, framerate=FRAMERATE):
+    """Computes the spectrum using FFT.
+
+    returns: Spectrum
+    """
+    n = len(ys)
+    d = 1 / framerate
+
+    if full:
+        hs = np.fft.fft(ys)
+        fs = np.fft.fftfreq(n, d)
+    else:
+        hs = np.fft.rfft(ys)
+        fs = np.fft.rfftfreq(n, d)
+
+    return thinkdsp.Spectrum(hs, fs, framerate, full)
 
 '''
 You want to ignore ambient sound. However, you shouldn't ignore high pitches
