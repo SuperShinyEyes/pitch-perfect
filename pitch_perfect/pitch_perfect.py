@@ -96,12 +96,13 @@ def autocorrelate(ys):
     lengths = range(N, N//2, -1)
     
     corrs = np.correlate(ys, ys, mode='same')
-    lags = np.arange(-N//2, N//2)
     
     # Take only the positive half
     corrs = corrs[N//2:]
     
+    # Offset diminish over time
     corrs /= lengths
+    # Normalize so -1 <= corrs <= 1
     corrs /= corrs[0]
     return corrs
 
