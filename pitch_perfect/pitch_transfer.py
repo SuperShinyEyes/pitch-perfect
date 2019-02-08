@@ -123,9 +123,10 @@ which tend to have low energy.
 AMBIENCE_THRESHOLD = 1E-07
 class PitchTransfer(PitchDetector):
 
-    def __init__(self, stdscr, numframes=FRAMERATE//4):
+    def __init__(self, stdscr, samplerate=FRAMERATE, numframes=FRAMERATE//16):
         super(PitchTransfer, self).__init__(stdscr)
         self.__is_high_pitch = False
+        self.samplerate = samplerate
         self.numframes = numframes
         self.update_canvas()
         self.listen()
@@ -136,13 +137,13 @@ class PitchTransfer(PitchDetector):
 
     def synthesize(self, frequencies):
         signals = tuple(
-            thinkdsp.CosSignal(freq=fs, amp=1.0, offset=0) for fs in frequencies
+            thinkdsp.CosSignal(freq=fs, amp=0.08, offset=0) for fs in frequencies
         )
 
-        duration = self.numframes / FRAMERATE
+        duration = self.numframes / self.samplerate
         waves = tuple(
             s.make_wave(
-                duration=duration, start=0, framerate=FRAMERATE
+                duration=duration, start=0, framerate=self.samplerate
                 ).ys for s in signals
         )
 
@@ -154,18 +155,28 @@ class PitchTransfer(PitchDetector):
         wave = self.synthesize(frequencies)
         speaker.play(wave)
 
+    def get_loudness_of_segment(self, old, new):
+        """
+        """
+        new_length = len(new)
+        old = old[new_length:]
+        segment = np.concatenate([old, new])
+        return asp.get_sound_pressure_level(segment)
 
 
     def listen(self):
         last_input_timestamp = 0
         frequencies = []
-        ambience_threshold = 100
+        ambience_threshold = 70
+        segment_for_spl = np.zeros(self.samplerate//2)
 
-        with self.default_mic.recorder(samplerate=FRAMERATE, channels=1) as mic, \
-             self.default_speaker.player(samplerate=FRAMERATE) as speaker:
+        with self.default_mic.recorder(samplerate=self.samplerate, channels=1) as mic, \
+             self.default_speaker.player(samplerate=self.samplerate) as speaker:
             while True:
                 ys = mic.record(numframes=self.numframes)
-                spl = asp.get_sound_pressure_level(ys)
+
+                # Get loudness of half sec
+                spl = self.get_loudness_of_segment(segment_for_spl, ys)
                 
                 if asp.is_quiet(spl, threshold=ambience_threshold) and \
                     not self.should_wait_for_input(last_input_timestamp) and \
@@ -189,7 +200,8 @@ class PitchTransfer(PitchDetector):
                     last_input_timestamp = time()
 
 
-                pitch, freq = asp.Autocorrelation.get_pitch_freq(ys, samplerate=FRAMERATE)
+                # pitch, freq = asp.Autocorrelation.get_pitch_freq(ys, samplerate=FRAMERATE)
+                pitch, freq = asp.YIN.get_pitch_freq(ys, samplerate=FRAMERATE)
                 frequencies.append(freq)                
                 self.update_canvas(f'Listening! {spl:.2f} dB,  Pitch: {pitch}')
 
