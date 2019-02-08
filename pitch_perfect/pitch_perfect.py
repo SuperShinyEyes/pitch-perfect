@@ -6,6 +6,7 @@ import sys,os
 import curses
 
 from pitch_perfect.data import FREQUENCY_KEY_MAP, FREQUENCY_ARRAY
+from pitch_perfect.thinkdsp import asp
 
 FRAMERATE = 44100    
 
@@ -170,24 +171,18 @@ class PianoPitchDetector(PitchDetector):
         with self.default_mic.recorder(samplerate=FRAMERATE, channels=1) as mic:
             while True:
                 ys = mic.record(numframes=FRAMERATE//4)
-                if not self.__is_high_pitch and np.abs(ys.mean()) < AMBIENCE_THRESHOLD:
+                spl = asp.get_sound_pressure_level(ys)
+                if not self.__is_high_pitch and asp.is_quiet(spl, threshold=70):
                     # self.update_canvas(f'Too quiet. mean:{ys.mean()}, max: {ys.max()}')
                     self.update_canvas()
                     continue
                 
-                corrs = autocorrelate(ys)
-                try:
-                    freq = get_frequency(corrs, *get_next_peak_range(corrs)); 
-                except ValueError:
-                    self.__is_high_pitch = False
-                    pass
-                else:
-                    pitch = freq2key(freq)
+                pitch, freq = asp.Autocorrelation.get_pitch_freq(ys, samplerate=FRAMERATE)
+                
+                # self.__is_high_pitch = True if int(pitch[-1]) > 4 else False
                     
-                    self.__is_high_pitch = True if int(pitch[-1]) > 4 else False
-                        
-                    sentence = f'{pitch}: {freq:.2f}HZ'
-                    self.update_canvas(sentence)
+                sentence = f'{pitch}: {freq:.2f}HZ'
+                self.update_canvas(sentence)
 
                 
 

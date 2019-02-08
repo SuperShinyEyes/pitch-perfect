@@ -159,15 +159,18 @@ class PitchTransfer(PitchDetector):
     def listen(self):
         last_input_timestamp = 0
         frequencies = []
+        ambience_threshold = 100
+
         with self.default_mic.recorder(samplerate=FRAMERATE, channels=1) as mic, \
              self.default_speaker.player(samplerate=FRAMERATE) as speaker:
             while True:
                 ys = mic.record(numframes=self.numframes)
                 spl = asp.get_sound_pressure_level(ys)
                 
-                if asp.is_quiet(spl) and \
+                if asp.is_quiet(spl, threshold=ambience_threshold) and \
                     not self.should_wait_for_input(last_input_timestamp) and \
                     len(frequencies) > 0:
+                    self.update_canvas(f'Transferring')
                     self.play_pitch_transfer(frequencies, speaker)
 
                     # NOTE: Soundcard module works only with context manager, and
@@ -177,19 +180,17 @@ class PitchTransfer(PitchDetector):
                     return self.listen()
                     
                 
-                if asp.is_quiet(spl) and \
+                if asp.is_quiet(spl, threshold=ambience_threshold) and \
                     not self.should_wait_for_input(last_input_timestamp):
                     self.update_canvas(f'Quiet {spl:.2f} dB')
                     continue
 
-                if not asp.is_quiet(spl):
+                if not asp.is_quiet(spl, threshold=ambience_threshold):
                     last_input_timestamp = time()
 
 
-                pitch, freq = asp.get_pitch_freq(ys)
-                if freq is not None:
-                    frequencies.append(freq)
-
+                pitch, freq = asp.Autocorrelation.get_pitch_freq(ys, samplerate=FRAMERATE)
+                frequencies.append(freq)                
                 self.update_canvas(f'Listening! {spl:.2f} dB,  Pitch: {pitch}')
 
 
