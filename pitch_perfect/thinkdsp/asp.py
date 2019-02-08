@@ -3,42 +3,6 @@ import numpy as np
 from pitch_perfect.data import FREQUENCY_KEY_MAP, FREQUENCY_ARRAY
 
 
-def autocorrelate(ys):
-    N = len(ys)
-    lengths = range(N, N//2, -1)
-    
-    corrs = np.correlate(
-        ys, 
-        ys, 
-        mode='same'  # Range of lag. 'same' is in the range from -N/2 to N/2,
-                     # where N is the length of the given segment
-        )
-    
-    # The 'same' mode return a symmetric autocorrelation values which is in 
-    # the range from -N/2 to N/2. Take only the positive half.
-    corrs = corrs[N//2:]
-    
-    # Offset diminish over time
-    corrs /= lengths
-    # Normalize so -1 <= corrs <= 1
-    corrs /= corrs[0]
-    return corrs
-
-def get_next_peak_range(ys):
-    a = np.argmax(ys < 0.7)
-
-    start = np.argmax(ys[a:] > 0.7) + a
-
-    end = np.argmax(ys[start:] < 0.7) + start
-    return start, end
-
-def get_frequency(ys, start, end):
-    lag = ys[start:end].argmax() + start
-    period = lag / 44100
-    return 1/period
-
-
-
 def get_sound_pressure_level(ys, p0=2E-6):
     """Get sound pressure level of given chunk
     https://en.wikipedia.org/wiki/Sound_pressure#Sound_pressure_level
@@ -54,7 +18,7 @@ def get_sound_pressure_level(ys, p0=2E-6):
     return 20 * np.log10(p / p0)
 
 
-def is_quiet(spl):
+def is_quiet(spl, threshold=60):
     """Evaluates if there was an input or just ambient noise. The threshold is
     based on the following chart:
     https://en.wikipedia.org/wiki/Sound_pressure#Examples_of_sound_pressure
@@ -63,7 +27,7 @@ def is_quiet(spl):
         spl (float): Sound pressur level
 
     """
-    return spl < 60
+    return spl < threshold
 
 
 def freq2key(freq):
@@ -90,16 +54,123 @@ def get_pitch_freq(ys):
     finally:
         return pitch, freq
 
-class YIN:
-
+class PitchAnalysis:
     def __init__(self, ys, samplerate=44100):
+        """
+        Args:
+            ys (np.array): Small audio chunk.
+        """
         self.ys = ys
         self.samplerate = samplerate
 
-        self._diff = self.difference(self.ys)
-        self._cmn = self.cumulative_mean_normalized(self._diff)
-        self.freq = self.absolute_threshold(self._cmn, samplerate=samplerate)
-        self.pitch = freq2key(self.freq)
+class Autocorrelation(PitchAnalysis):
+    def __init__(self, ys, samplerate=44100):
+        """Predict pitch of a given audio chunk using YIN algorithm
+
+        Args:
+            ys (np.array): Small audio chunk.
+        """
+        super(Autocorrelation, self).__init__(ys, samplerate=samplerate)
+
+    @staticmethod
+    def get_pitch_freq(ys, samplerate=44100):
+        analysis = Autocorrelation(ys, samplerate)
+        corrs = analysis.autocorrelate(analysis.ys)
+        cmn = analysis.cumulative_mean_normalized(corrs)
+        freq = analysis.absolute_threshold(cmn)
+        pitch = freq2key(freq)
+        return pitch, freq
+
+
+    def autocorrelate(self, ys):
+        N = len(ys)
+        lengths = range(N, N//2, -1)
+        
+        corrs = np.correlate(
+            ys, 
+            ys, 
+            mode='same'  # Range of lag. 'same' is in the range from -N/2 to N/2,
+                        # where N is the length of the given segment
+            )
+        
+        # The 'same' mode return a symmetric autocorrelation values which is in 
+        # the range from -N/2 to N/2. Take only the positive half.
+        corrs = corrs[N//2:]
+        
+        # Offset diminish over time
+        corrs /= lengths
+        # Normalize so -1 <= corrs <= 1
+        corrs /= corrs[0]
+        return corrs
+
+    def cumulative_mean_normalized(self, corrs):
+        """
+        Args:
+            diffs (np.array): Difference over range of lags
+        """
+        corrs *= -1
+        corrs += 1
+        cmn = np.zeros(corrs.shape)
+        cmn[0] = 1
+        for lag in range(1, len(corrs)) :
+            cmn[lag] = corrs[lag] / (
+            np.sum(corrs[1:lag+1]) / lag
+            )  
+        return cmn
+
+    def absolute_threshold(self, cmn, samplerate=44100, threshold=0.1):
+        """
+        Args:
+            cmn (np.array): Cumulative mean normalized difference
+
+        Return fundamental frequency of chunk
+        """
+        def cannot_apply_absolute_threshold(cmn):
+            return np.alltrue(cmn > threshold)
+        
+        if cannot_apply_absolute_threshold(cmn):
+            # Return global minimum period
+            return  44100 / np.argmin(cmn)
+        
+        first_dip_start = np.argmax(cmn < threshold)
+        first_dip_end = np.argmax(cmn[first_dip_start:] > threshold) + first_dip_start
+
+        absolute_threshold_min = np.argmin(
+            cmn[first_dip_start:first_dip_end]
+        ) + first_dip_start
+
+        return 44100 / absolute_threshold_min
+
+    
+
+    
+
+
+class YIN(PitchAnalysis):
+
+    def __init__(self, ys, samplerate=44100):
+        """Predict pitch of a given audio chunk using YIN algorithm
+
+        Args:
+            ys (np.array): Small audio chunk.
+
+        TODO: Parse entire audio segment. 
+              Now it supports only real-time use which takes only a single chunk.
+        """
+        super(YIN, self).__init__(ys, samplerate=samplerate)
+
+        
+
+    @staticmethod
+    def get_pitch_freq(ys, samplerate=44100):
+        """Return pitch and freq for a single chunk of audio for real-time use. 
+        """
+        analysis = YIN(ys, samplerate=samplerate)
+        diff = analysis.difference(analysis.ys)
+        cmn = analysis.cumulative_mean_normalized(diff)
+        freq = analysis.absolute_threshold(cmn, samplerate=samplerate)
+        pitch = freq2key(freq)
+        return  pitch, freq
     
     def difference(self, ys):
         N = len(ys)    
@@ -124,20 +195,20 @@ class YIN:
         return cmn
 
 
-    def absolute_threshold(self, cmn, samplerate=44100):
+    def absolute_threshold(self, cmn, samplerate=44100, threshold=0.1):
         """
         Args:
             cmn (np.array): Cumulative mean normalized difference
         """
         def cannot_apply_absolute_threshold(cmn):
-            return np.alltrue(cmn > 0.1)
+            return np.alltrue(cmn > threshold)
         
         if cannot_apply_absolute_threshold(cmn):
             # Return global minimum period
             return  44100 / np.argmin(cmn)
         
-        first_dip_start = np.argmax(cmn < 0.1)
-        first_dip_end = np.argmax(cmn[first_dip_start:] > 0.1) + first_dip_start
+        first_dip_start = np.argmax(cmn < threshold)
+        first_dip_end = np.argmax(cmn[first_dip_start:] > threshold) + first_dip_start
 
         absolute_threshold_min = np.argmin(
             cmn[first_dip_start:first_dip_end]
