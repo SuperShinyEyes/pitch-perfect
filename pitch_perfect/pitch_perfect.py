@@ -6,33 +6,19 @@ import sys,os
 import curses
 
 from pitch_perfect.data import FREQUENCY_KEY_MAP, FREQUENCY_ARRAY
-from pitch_perfect.thinkdsp import asp
+from pitch_perfect.thinkdsp import asp, thinkdsp
+import time 
 
 FRAMERATE = 44100    
 
 
-class PitchDetector:
+class PitchUI:
 
-    def __init__(self, stdscr):
-        # get a list of all speakers:
-        speakers = sc.all_speakers()
-        # get the current default speaker on your system:
-        self.default_speaker = sc.default_speaker()
-        # get a list of all microphones:
-        mics = sc.all_microphones()
-        # get the current default microphone on your system:
-        self.default_mic = self.__get_build_in_mic(mics)
+    def __init__(self, stdscr, title):
         self.stdscr = stdscr
+        self.title = title
 
         self.__load_canvas(stdscr)
-
-
-    def __get_build_in_mic(self, mics):
-        for m in mics:
-            if m.name == 'Built-in Microphone':
-                return m
-        else:
-            raise BuiltInMicrophoneNotFoundError
 
     def __load_canvas(self, stdscr):
         # Clear and refresh the screen for a blank canvas
@@ -54,8 +40,8 @@ class PitchDetector:
         height, width = self.stdscr.getmaxyx()
 
         # Declaration of strings
-        title = "Pitch Perfect"[:width-1]
-        subtitle = "Written by Seyoung & Jonathan"[:width-1]
+        title = self.title[:width-1]
+        subtitle = "Written by Seyoung Park"[:width-1]
 
         # Centering calculations
         start_x_title = int((width // 2) - (len(title) // 2) - len(title) % 2)
@@ -92,48 +78,151 @@ class PitchDetector:
 
         # k = self.stdscr.getch()
 
-def autocorrelate(ys):
-    N = len(ys)
-    lengths = range(N, N//2, -1)
-    
-    corrs = np.correlate(
-        ys, 
-        ys, 
-        mode='same'  # Range of lag. 'same' is in the range from -N/2 to N/2,
-                     # where N is the length of the given segment
+'''
+You want to ignore ambient sound. However, you shouldn't ignore high pitches
+which tend to have low energy. 
+
+1E-06 ignores E4 guitar string
+'''
+AMBIENCE_THRESHOLD = 1E-07
+class PitchDetectorAudioSystem():
+
+    def __init__(self):
+
+        # get a list of all speakers:
+        speakers = sc.all_speakers()
+        # get the current default speaker on your system:
+        self.default_speaker = sc.default_speaker()
+        # get a list of all microphones:
+        mics = sc.all_microphones()
+        # get the current default microphone on your system:
+        self.default_mic = self.__get_build_in_mic(mics)
+
+
+    def __get_build_in_mic(self, mics):
+        for m in mics:
+            if m.name == 'Built-in Microphone':
+                return m
+        else:
+            raise BuiltInMicrophoneNotFoundError
+
+
+class PitchDetector(PitchDetectorAudioSystem):
+    def __init__(self, detection_method):
+        super(PitchDetector, self).__init__()
+        self.detection_method = detection_method
+        
+
+    def listen(self, ui):
+        with self.default_mic.recorder(samplerate=FRAMERATE, channels=1) as mic:
+            while True:
+                ys = mic.record(numframes=FRAMERATE//4)
+                spl = asp.get_sound_pressure_level(ys)
+
+                if asp.is_quiet(spl, threshold=60):
+                    # self.update_canvas(f'Too quiet. mean:{ys.mean()}, max: {ys.max()}')
+                    ui.update_canvas()
+                    continue
+                
+                # pitch, freq = asp.Autocorrelation.get_pitch_freq(ys, samplerate=FRAMERATE)
+                pitch, freq = self.detection_method.get_pitch_freq(ys, samplerate=FRAMERATE)
+                
+                # self.__is_high_pitch = True if int(pitch[-1]) > 4 else False
+                    
+                sentence = f'{pitch}: {freq:.2f}HZ'
+                ui.update_canvas(sentence)
+
+                
+class PitchTransfer(PitchDetectorAudioSystem):
+
+    def __init__(self, detection_method, samplerate=FRAMERATE, numframes=FRAMERATE//16):
+        super(PitchTransfer, self).__init__()
+        self.detection_method = detection_method
+        self.samplerate = samplerate
+        self.numframes = numframes
+
+    def should_wait_for_input(self, last_input_timestamp):
+        timedelta = time.time() - last_input_timestamp
+        return timedelta % 60 < 0.9
+
+    def synthesize(self, frequencies):
+        signals = tuple(
+            thinkdsp.CosSignal(freq=fs, amp=0.08, offset=0) for fs in frequencies
         )
-    
-    # The 'same' mode return a symmetric autocorrelation values which is in 
-    # the range from -N/2 to N/2. Take only the positive half.
-    corrs = corrs[N//2:]
-    
-    # Offset diminish over time
-    corrs /= lengths
-    # Normalize so -1 <= corrs <= 1
-    corrs /= corrs[0]
-    return corrs
 
-def get_next_peak_range(ys):
-    a = np.argmax(ys < 0.7)
+        duration = self.numframes / self.samplerate
+        waves = tuple(
+            s.make_wave(
+                duration=duration, start=0, framerate=self.samplerate
+                ).ys for s in signals
+        )
 
-    start = np.argmax(ys[a:] > 0.7) + a
+        return np.concatenate(waves)
+        
 
-    end = np.argmax(ys[start:] < 0.7) + start
-    return start, end
+    def play_pitch_transfer(self, frequencies, speaker):
+        if len(frequencies) == 0 or speaker is None: return
+        wave = self.synthesize(frequencies)
+        speaker.play(wave)
 
-def get_frequency(ys, start, end):
-    lag = ys[start:end].argmax() + start
-    period = lag / 44100
-    return 1/period
+    def get_loudness_of_segment(self, old, new):
+        """
+        """
+        new_length = len(new)
+        old = old[new_length:]
+        segment = np.concatenate([old, new])
+        return asp.get_sound_pressure_level(segment)
 
-def freq2key(freq):
-    return FREQUENCY_KEY_MAP[
-        FREQUENCY_ARRAY[
-            np.argmin(
-                np.abs(FREQUENCY_ARRAY - freq)
-                )
-            ]
-        ]
+    def _is_ready_to_transfer(self, spl, ambience_threshold, last_input_timestamp, frequencies):
+        return asp.is_quiet(spl, threshold=ambience_threshold) and \
+                not self.should_wait_for_input(last_input_timestamp) and \
+                len(frequencies) > 0
+
+
+
+    def listen(self, ui):
+        last_input_timestamp = 0
+        frequencies = []
+        ambience_threshold = 70
+        segment_for_spl = np.zeros(self.samplerate//2)
+
+        with self.default_mic.recorder(samplerate=self.samplerate, channels=1) as mic, \
+             self.default_speaker.player(samplerate=self.samplerate) as speaker:
+            while True:
+                ys = mic.record(numframes=self.numframes)
+
+                # Get loudness of half sec
+                spl = self.get_loudness_of_segment(segment_for_spl, ys)
+                
+                if self._is_ready_to_transfer(spl, ambience_threshold, last_input_timestamp, frequencies):
+                    ui.update_canvas(f'Transferring')
+                    self.play_pitch_transfer(frequencies, speaker)
+
+                    # You need to sleep 1 second so the system doesn't wrongly 
+                    # listen to "echo" of the transfer
+                    time.sleep(1)
+
+                    # NOTE: Soundcard module works only with context manager, and
+                    # the Recorder.flush() does not flush all the chunks piled
+                    # during the playback.
+                    # Thus, recursion is needed in order to flush recorded chunk
+                    return self.listen(ui)
+                    
+                
+                if asp.is_quiet(spl, threshold=ambience_threshold) and \
+                    not self.should_wait_for_input(last_input_timestamp):
+                    ui.update_canvas(f'Quiet {spl:.2f} dB')
+                    continue
+
+                if not asp.is_quiet(spl, threshold=ambience_threshold):
+                    last_input_timestamp = time.time()
+
+
+                # pitch, freq = asp.Autocorrelation.get_pitch_freq(ys, samplerate=FRAMERATE)
+                pitch, freq = asp.YIN.get_pitch_freq(ys, samplerate=FRAMERATE)
+                frequencies.append(freq)                
+                ui.update_canvas(f'Listening! {spl:.2f} dB,  Pitch: {pitch}')
+
 
 def make_spectrum(ys, full=False, framerate=FRAMERATE):
     """Computes the spectrum using FFT.
@@ -152,47 +241,29 @@ def make_spectrum(ys, full=False, framerate=FRAMERATE):
 
     return thinkdsp.Spectrum(hs, fs, framerate, full)
 
-'''
-You want to ignore ambient sound. However, you shouldn't ignore high pitches
-which tend to have low energy. 
 
-1E-06 ignores E4 guitar string
-'''
-AMBIENCE_THRESHOLD = 1E-07
-class PianoPitchDetector(PitchDetector):
+class PitchDetectorApp:
 
-    def __init__(self, stdscr):
-        super(PianoPitchDetector, self).__init__(stdscr)
-        self.__is_high_pitch = False
-        self.update_canvas()
-        self.listen()
+    def __init__(self, detection_method):
+        self.ui = curses.wrapper(PitchUI, "Pitch Detector")
+        self.ui.update_canvas()
 
-    def listen(self):
-        with self.default_mic.recorder(samplerate=FRAMERATE, channels=1) as mic:
-            while True:
-                ys = mic.record(numframes=FRAMERATE//4)
-                spl = asp.get_sound_pressure_level(ys)
-                if not self.__is_high_pitch and asp.is_quiet(spl, threshold=70):
-                    # self.update_canvas(f'Too quiet. mean:{ys.mean()}, max: {ys.max()}')
-                    self.update_canvas()
-                    continue
-                
-                pitch, freq = asp.Autocorrelation.get_pitch_freq(ys, samplerate=FRAMERATE)
-                
-                # self.__is_high_pitch = True if int(pitch[-1]) > 4 else False
-                    
-                sentence = f'{pitch}: {freq:.2f}HZ'
-                self.update_canvas(sentence)
-
-                
-
+        self.detector = PitchDetector(detection_method)
+        self.detector.listen(self.ui)
     
+class PitchTransferApp:
+
+    def __init__(self, detection_method):
+        self.ui = curses.wrapper(PitchUI, "Pitch Transfer")
+        self.ui.update_canvas()
+
+        self.transfer = PitchTransfer(detection_method)
+        self.transfer.listen(self.ui)
+    
+
 class BuiltInMicrophoneNotFoundError(Exception):
     pass
 
-def main():
-    curses.wrapper(PianoPitchDetector)
 
-if __name__ == "__main__":
-    # curses.wrapper(PitchDetector)
-    curses.wrapper(PianoPitchDetector)
+def main(detection_method=asp.YIN):
+    PitchDetectorApp(detection_method)

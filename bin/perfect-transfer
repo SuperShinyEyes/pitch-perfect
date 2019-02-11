@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
-from pitch_perfect import pitch_transfer
+from pitch_perfect.pitch_perfect import PitchTransferApp
+from pitch_perfect.thinkdsp import asp
 
-pitch_transfer.main()
+PitchTransferApp(asp.YIN)
